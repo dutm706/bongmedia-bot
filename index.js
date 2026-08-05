@@ -131,6 +131,8 @@ app.post('/webhook', async (req, res) => {
     res.sendStatus(404);
   }
 });
-
+app.get('/', (req, res) => {
+  res.status(200).send('Máy chủ AI của doanh nghiệp Bống Media đang hoạt động bình thường! 🚀');
+});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server chạy trên port ${PORT}`));
