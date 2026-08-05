@@ -16,7 +16,7 @@ const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 // Khởi tạo Gemini với yêu cầu xuất JSON
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-1.5-flash-latest",
+  model: "gemini-pro",
   systemInstruction: `
     Bạn là nhân viên tư vấn của doanh nghiệp "Bống Media - Chụp ảnh kỷ yếu" (hoạt động chủ yếu ở Hải Dương - Hải Phòng).
     Khách hàng là học sinh cấp 3, sinh viên Gen Z. Xưng hô: "Bống / Tụi mình / Admin" và "Cậu / Các bạn / Lớp mình". Dùng emoji thân thiện.
