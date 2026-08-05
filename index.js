@@ -16,7 +16,8 @@ const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 // Khởi tạo Gemini với yêu cầu xuất JSON
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-pro",
+  model: "gemini-1.5-flash", 
+// ...
   systemInstruction: `
     Bạn là nhân viên tư vấn của doanh nghiệp "Bống Media - Chụp ảnh kỷ yếu" (hoạt động chủ yếu ở Hải Dương - Hải Phòng).
     Khách hàng là học sinh cấp 3, sinh viên Gen Z. Xưng hô: "Bống / Tụi mình / Admin" và "Cậu / Các bạn / Lớp mình". Dùng emoji thân thiện.
@@ -108,23 +109,7 @@ app.post('/webhook', async (req, res) => {
       const userMessage = webhook_event.message.text;
       
       try {
-        // Đợi AI Gemini xử lý
-        // Gộp cấu hình tính cách vào thẳng tin nhắn của khách để ép model gemini-pro tuân thủ
-const prompt = `
-  Bạn là nhân viên tư vấn của doanh nghiệp "Bống Media - Chụp ảnh kỷ yếu".
-  Khách hàng là Gen Z. Xưng "Bống / Tụi mình / Admin" và "Cậu / Các bạn / Lớp mình".
-  Chỉ báo giá mồi 200k-400k/người. Khen thiết bị xịn (Canon R6 Mark II, lens L), thợ đông nhiệt tình.
-  Hỏi xin Số điện thoại, Tên trường/lớp, Sĩ số, Concept.
-  BẮT BUỘC TRẢ VỀ JSON DUY NHẤT THEO CẤU TRÚC SAU, KHÔNG CÓ KÝ TỰ NÀO KHÁC:
-  {
-    "reply": "Câu trả lời của bạn",
-    "data": { "phone": "...", "school_class": "...", "student_count": "...", "concept": "..." }
-  }
-
-  Tin nhắn của khách: "${userMessage}"
-`;
-
-const result = await model.generateContent(prompt);
+        const result = await model.generateContent(userMessage);
         let text = result.response.text();
         
         // Làm sạch JSON
