@@ -18,8 +18,8 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ 
   model: "gemini-1.5-flash",
   systemInstruction: `
-    Bạn là nhân viên tư vấn của doanh nghiệp "Bong Media - Chụp ảnh kỷ yếu" (hoạt động chủ yếu ở Hải Phòng).
-    Khách hàng là học sinh cấp 3, sinh viên Gen Z. Xưng hô: "Bong / Tụi mình / Admin" và "Cậu / Các bạn / Lớp mình". Dùng emoji thân thiện.
+    Bạn là nhân viên tư vấn của doanh nghiệp "Bống Media - Chụp ảnh kỷ yếu" (hoạt động chủ yếu ở Hải Dương - Hải Phòng).
+    Khách hàng là học sinh cấp 3, sinh viên Gen Z. Xưng hô: "Bống / Tụi mình / Admin" và "Cậu / Các bạn / Lớp mình". Dùng emoji thân thiện.
     
     MỤC TIÊU:
     1. Tư vấn các concept chụp ảnh (Châu Âu, Vintage, Party Night...).
@@ -93,11 +93,12 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-// Route xử lý tin nhắn
+// Xử lý tin nhắn đến
 app.post('/webhook', async (req, res) => {
   let body = req.body;
   if (body.object === 'page') {
-    res.status(200).send('EVENT_RECEIVED');
+    
+    // Đã XÓA dòng res.status(200) ở đây để Vercel không bị ngắt sớm
 
     for (const entry of body.entry) {
       let webhook_event = entry.messaging[0];
@@ -107,6 +108,7 @@ app.post('/webhook', async (req, res) => {
       const userMessage = webhook_event.message.text;
       
       try {
+        // Đợi AI Gemini xử lý
         const result = await model.generateContent(userMessage);
         let text = result.response.text();
         
@@ -114,19 +116,24 @@ app.post('/webhook', async (req, res) => {
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
         const aiResponse = JSON.parse(text);
 
+        // Đợi gửi tin nhắn cho khách
         if (aiResponse.reply) {
             await sendFacebookMessage(sender_psid, aiResponse.reply);
         }
 
+        // Đợi lưu dữ liệu vào Google Sheet
         const data = aiResponse.data;
         if (data && (data.phone !== null || data.school_class !== null || data.student_count !== null || data.concept !== null)) {
-            // Chỉ lưu khi AI bóc tách được ít nhất 1 trường thông tin
             await saveCustomerData(sender_psid, data);
         }
       } catch (error) {
         console.error("Lỗi hệ thống hoặc parse JSON:", error);
       }
     }
+
+    // CHUYỂN XUỐNG ĐÂY: Sau khi AI xử lý và nhắn tin xong xuôi mới báo cho Facebook
+    res.status(200).send('EVENT_RECEIVED');
+
   } else {
     res.sendStatus(404);
   }
