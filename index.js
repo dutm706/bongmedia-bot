@@ -141,5 +141,16 @@ app.post('/webhook', async (req, res) => {
 app.get('/', (req, res) => {
   res.status(200).send('Máy chủ AI của doanh nghiệp Bống Media đang hoạt động bình thường! 🚀');
 });
+app.get('/test-models', async (req, res) => {
+  try {
+    const response = await axios.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`);
+    const availableModels = response.data.models
+      .filter(m => m.supportedGenerationMethods.includes('generateContent'))
+      .map(m => m.name.replace('models/', ''));
+    res.json({ count: availableModels.length, models: availableModels });
+  } catch (error) {
+    res.status(500).json({ error: error.response?.data || error.message });
+  }
+});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server chạy trên port ${PORT}`));
