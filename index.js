@@ -16,7 +16,7 @@ const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 // Khởi tạo Gemini với yêu cầu xuất JSON
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-2.5-pro",
+  model: "gemini-2.5-flash",
 // ...
   systemInstruction: `
     Bạn là nhân viên tư vấn của doanh nghiệp "Bống Media - Chụp ảnh kỷ yếu" (hoạt động chủ yếu ở Hải Dương - Hải Phòng).
