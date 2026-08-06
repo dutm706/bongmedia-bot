@@ -82,13 +82,9 @@ async function sendFacebookMessage(senderId, text) {
     console.error("Lỗi gửi tin nhắn FB:", error.response?.data || error.message);
   }
 }
-// Thêm dòng này để khởi tạo bộ nhớ cho AI (đặt ở phạm vi toàn cục)
+// Bộ nhớ tạm để lưu lịch sử chat của từng khách hàng
 const chatSessions = {}; 
 
-// ... (code hiện tại của bạn)
-app.post('/webhook', async (req, res) => {
-    // ...
-// Route Verify Webhook
 app.post('/webhook', async (req, res) => {
   let body = req.body;
   if (body.object === 'page') {
@@ -101,14 +97,14 @@ app.post('/webhook', async (req, res) => {
       const userMessage = webhook_event.message.text;
       
       try {
-        // KIỂM TRA TRÍ NHỚ: Nếu khách này chưa từng chat, tạo một phiên chat mới
+        // Kiểm tra trí nhớ
         if (!chatSessions[sender_psid]) {
           chatSessions[sender_psid] = model.startChat({
             history: [],
           });
         }
 
-        // Gọi phiên chat của đúng khách hàng đó và gửi tin nhắn mới
+        // Gọi phiên chat và gửi tin
         const chat = chatSessions[sender_psid];
         const result = await chat.sendMessage(userMessage);
         
@@ -118,12 +114,12 @@ app.post('/webhook', async (req, res) => {
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
         const aiResponse = JSON.parse(text);
 
-        // Đợi gửi tin nhắn cho khách
+        // Gửi tin nhắn cho khách
         if (aiResponse.reply) {
             await sendFacebookMessage(sender_psid, aiResponse.reply);
         }
 
-        // Đợi lưu dữ liệu vào Google Sheet
+        // Lưu dữ liệu vào Google Sheet
         const data = aiResponse.data;
         if (data && (data.phone !== null || data.school_class !== null || data.student_count !== null || data.concept !== null || data.shoot_date !== null)) {
             await saveCustomerData(sender_psid, data);
@@ -139,19 +135,9 @@ app.post('/webhook', async (req, res) => {
     res.sendStatus(404);
   }
 });
-app.get('/', (req, res) => {
-  res.status(200).send('Máy chủ AI của doanh nghiệp Bống Media đang hoạt động bình thường! 🚀');
-});
-app.get('/test-models', async (req, res) => {
-  try {
-    const response = await axios.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`);
-    const availableModels = response.data.models
-      .filter(m => m.supportedGenerationMethods.includes('generateContent'))
-      .map(m => m.name.replace('models/', ''));
-    res.json({ count: availableModels.length, models: availableModels });
-  } catch (error) {
-    res.status(500).json({ error: error.response?.data || error.message });
-  }
-});
+
+// Khởi chạy server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server chạy trên port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Bong Media bot is running on port ${PORT}`);
+});
