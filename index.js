@@ -22,19 +22,17 @@ const model = genAI.getGenerativeModel({
     Bạn là nhân viên tư vấn của doanh nghiệp "Bống Media - Chụp ảnh kỷ yếu" (hoạt động chủ yếu ở Hải Dương - Hải Phòng).
     Khách hàng là học sinh cấp 3, sinh viên Gen Z. Xưng hô: "Bống / Tụi mình / Admin" và "Cậu / Các bạn / Lớp mình". Dùng emoji thân thiện.
     
-    MỤC TIÊU:
-    1. Tư vấn các concept chụp ảnh (Châu Âu, Vintage, Party Night...).
-    2. Nêu bật ưu điểm: Đội ngũ thợ ảnh siêu đông, nhiệt tình. Chất lượng hình ảnh sắc nét, trong veo nhờ đầu tư 100% thiết bị cao cấp như body Sony, Fuji, Nikon, Canon và các dòng lens L chuẩn mực (không nhắc lại quá nhiều).
-    3. Không gửi bảng giá dài, chỉ báo giá mồi (300k-600k/người trọn gói).
-    4. Khéo léo hỏi xin các thông tin: Số điện thoại, Tên trường/lớp, Sĩ số, Concept yêu thích, ngày chụp dự kiến để chốt lịch.
-    5. Sau khi có đủ thông tin rồi thì hãy chốt đơn, lưu ý không xin lại những thông tin đã có và hẹn gọi lại cho khách hàng.
+    MỤC TIÊU & QUY TẮC CHỐNG LẶP (CỰC KỲ QUAN TRỌNG):
+    1. Ghi nhớ ngữ cảnh: Bạn đã có trí nhớ. Hãy đọc kỹ lịch sử trò chuyện. TUYỆT ĐỐI KHÔNG HỎI LẠI những thông tin mà khách đã cung cấp (SĐT, trường lớp, sĩ số, concept, ngày chụp).
+    2. Chống lặp văn mẫu: Chỉ chào hỏi và khoe thiết bị (Canon R6 Mark II, lens L) ở TIN NHẮN ĐẦU TIÊN. Tuyệt đối không nhắc lại điệp khúc thiết bị này ở các câu sau gây phản cảm cho khách.
+    3. Trọng tâm: Tư vấn concept, báo giá mồi (300k-600k/người) và chỉ khéo léo hỏi thăm những thông tin CÒN THIẾU để chốt lịch. Trả lời ngắn gọn, tự nhiên như người thật.
     
     QUY TẮC BẮT BUỘC:
     Mọi câu trả lời của bạn PHẢI là một file JSON hợp lệ duy nhất. KHÔNG có văn bản nào nằm ngoài JSON. Cấu trúc:
     {
-      "reply": "Nội dung chat với khách (ngắn gọn 3-4 dòng, thân thiện)",
+      "reply": "Nội dung chat với khách (ngắn gọn, tự nhiên, không nhai lại ý cũ)",
       "data": {
-         "phone": "Số điện thoại khách (nếu có, nếu không để null)",
+         "phone": "Số điện thoại (nếu có, nếu không để null)",
          "school_class": "Tên lớp/trường (nếu có, nếu không để null)",
          "student_count": "Sĩ số (nếu có, nếu không để null)",
          "concept": "Concept muốn chụp (nếu có, nếu không để null)",
@@ -86,24 +84,10 @@ async function sendFacebookMessage(senderId, text) {
 }
 
 // Route Verify Webhook
-app.get('/webhook', (req, res) => {
-  let mode = req.query['hub.mode'];
-  let token = req.query['hub.verify_token'];
-  let challenge = req.query['hub.challenge'];
-  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-    res.status(200).send(challenge);
-  } else {
-    res.sendStatus(403);
-  }
-});
-
-// Xử lý tin nhắn đến
 app.post('/webhook', async (req, res) => {
   let body = req.body;
   if (body.object === 'page') {
     
-    // Đã XÓA dòng res.status(200) ở đây để Vercel không bị ngắt sớm
-
     for (const entry of body.entry) {
       let webhook_event = entry.messaging[0];
       if (!webhook_event || !webhook_event.message || !webhook_event.message.text || webhook_event.message.is_echo) continue;
@@ -112,7 +96,17 @@ app.post('/webhook', async (req, res) => {
       const userMessage = webhook_event.message.text;
       
       try {
-        const result = await model.generateContent(userMessage);
+        // KIỂM TRA TRÍ NHỚ: Nếu khách này chưa từng chat, tạo một phiên chat mới
+        if (!chatSessions[sender_psid]) {
+          chatSessions[sender_psid] = model.startChat({
+            history: [],
+          });
+        }
+
+        // Gọi phiên chat của đúng khách hàng đó và gửi tin nhắn mới
+        const chat = chatSessions[sender_psid];
+        const result = await chat.sendMessage(userMessage);
+        
         let text = result.response.text();
         
         // Làm sạch JSON
@@ -134,7 +128,6 @@ app.post('/webhook', async (req, res) => {
       }
     }
 
-    // CHUYỂN XUỐNG ĐÂY: Sau khi AI xử lý và nhắn tin xong xuôi mới báo cho Facebook
     res.status(200).send('EVENT_RECEIVED');
 
   } else {
