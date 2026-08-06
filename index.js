@@ -82,7 +82,12 @@ async function sendFacebookMessage(senderId, text) {
     console.error("Lỗi gửi tin nhắn FB:", error.response?.data || error.message);
   }
 }
+// Thêm dòng này để khởi tạo bộ nhớ cho AI (đặt ở phạm vi toàn cục)
+const chatSessions = {}; 
 
+// ... (code hiện tại của bạn)
+app.post('/webhook', async (req, res) => {
+    // ...
 // Route Verify Webhook
 app.post('/webhook', async (req, res) => {
   let body = req.body;
