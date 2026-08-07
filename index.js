@@ -54,25 +54,48 @@ const serviceAccountAuth = new JWT({
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-// Hàm lưu data chắt lọc
+// Hàm lưu hoặc cập nhật dữ liệu khách hàng (Chống trùng lặp dòng)
 async function saveCustomerData(senderId, customerData) {
   try {
     const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
     await doc.loadInfo();
     const sheet = doc.sheetsByIndex[0]; 
     
-    await sheet.addRow({
-      'Thời gian': new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
-      'Facebook ID': senderId,
-      'Loại Booking': customerData.booking_type || '', // Thêm trường thông tin mới
-      'Số điện thoại': customerData.phone || '',
-      'Trường / Tên lớp': customerData.school_class || '',
-      'Sĩ số dự kiến': customerData.student_count || '',
-      'Concept yêu thích': customerData.concept || '',
-      'Ngày chụp dự kiến': customerData.shoot_date || ''
-    });
+    // Lấy toàn bộ danh sách các hàng trên Sheet
+    const rows = await sheet.getRows();
+    
+    // Tra soát xem Facebook ID đã tồn tại chưa
+    const existingRow = rows.find(row => row.get('Facebook ID') === senderId);
+    const currentTime = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+    if (existingRow) {
+      // NẾU LÀ KHÁCH CŨ: Chỉ cập nhật (ghi đè) những trường có thông tin mới
+      existingRow.set('Thời gian', currentTime);
+      if (customerData.booking_type) existingRow.set('Loại Booking', customerData.booking_type);
+      if (customerData.phone) existingRow.set('Số điện thoại', customerData.phone);
+      if (customerData.school_class) existingRow.set('Trường / Tên lớp', customerData.school_class);
+      if (customerData.student_count) existingRow.set('Sĩ số dự kiến', customerData.student_count);
+      if (customerData.concept) existingRow.set('Concept yêu thích', customerData.concept);
+      if (customerData.shoot_date) existingRow.set('Ngày chụp dự kiến', customerData.shoot_date);
+      
+      await existingRow.save(); // Lưu thay đổi trực tiếp trên hàng đó
+      console.log(`Đã CẬP NHẬT thông tin cho Facebook ID: ${senderId}`);
+    } else {
+      // NẾU LÀ KHÁCH MỚI: Thêm 1 hàng mới tinh
+      await sheet.addRow({
+        'Thời gian': currentTime,
+        'Facebook ID': senderId,
+        'Loại Booking': customerData.booking_type || '',
+        'Số điện thoại': customerData.phone || '',
+        'Trường / Tên lớp': customerData.school_class || '',
+        'Sĩ số dự kiến': customerData.student_count || '',
+        'Concept yêu thích': customerData.concept || '',
+        'Ngày chụp dự kiến': customerData.shoot_date || ''
+      });
+      console.log(`Đã TẠO MỚI thông tin cho Facebook ID: ${senderId}`);
+    }
   } catch (error) {
-    console.error("Lỗi Google Sheet:", error);
+    console.error("Lỗi cập nhật Google Sheet:", error);
   }
 }
 // Hàm gửi tin nhắn qua Messenger API (Hỗ trợ Quick Replies)
@@ -104,6 +127,31 @@ async function sendFacebookMessage(sender_psid, text, quickRepliesArray = []) {
 // Bộ nhớ tạm để lưu lịch sử chat của từng khách hàng
 const chatSessions = {}; 
 
+// Hàm tra soát thông tin khách hàng cũ từ Google Sheet
+async function getExistingCustomerData(senderId) {
+  try {
+    const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByIndex[0];
+    const rows = await sheet.getRows();
+    
+    const existingRow = rows.find(row => row.get('Facebook ID') === senderId);
+    if (existingRow) {
+      return {
+        booking_type: existingRow.get('Loại Booking') || null,
+        phone: existingRow.get('Số điện thoại') || null,
+        school_class: existingRow.get('Trường / Tên lớp') || null,
+        student_count: existingRow.get('Sĩ số dự kiến') || null,
+        concept: existingRow.get('Concept yêu thích') || null,
+        shoot_date: existingRow.get('Ngày chụp dự kiến') || null
+      };
+    }
+  } catch (error) {
+    console.error("Lỗi đọc dữ liệu cũ từ Sheet:", error);
+  }
+  return null;
+}
+
 app.post('/webhook', async (req, res) => {
   let body = req.body;
   if (body.object === 'page') {
@@ -116,10 +164,30 @@ app.post('/webhook', async (req, res) => {
       const userMessage = webhook_event.message.text;
       
       try {
-        // Kiểm tra trí nhớ
+        // KIỂM TRA TRÍ NHỚ & KHÔI PHỤC DỮ LIỆU CŨ TỪ SHEET
         if (!chatSessions[sender_psid]) {
+          const oldData = await getExistingCustomerData(sender_psid);
+          
+          let initialHistory = [];
+          if (oldData) {
+            // Nối dữ liệu cũ thành thông điệp ngầm cho AI nhớ lại khách hàng
+            const contextText = `[HỆ THỐNG]: Đây là khách hàng cũ. Thông tin đã lưu trước đó: ` +
+              `Loại booking: ${oldData.booking_type || 'chưa có'}, ` +
+              `SĐT: ${oldData.phone || 'chưa có'}, ` +
+              `Trường/Lớp: ${oldData.school_class || 'chưa có'}, ` +
+              `Sĩ số: ${oldData.student_count || 'chưa có'}, ` +
+              `Concept: ${oldData.concept || 'chưa có'}, ` +
+              `Ngày chụp: ${oldData.shoot_date || 'chưa có'}. ` +
+              `Hãy tiếp tục tư vấn mượt mà, không hỏi lại các thông tin đã có này.`;
+
+            initialHistory = [
+              { role: 'user', parts: [{ text: contextText }] },
+              { role: 'model', parts: [{ text: JSON.stringify({ reply: "Bống đã nhớ thông tin của cậu rồi! Mình tư vấn tiếp nhé.", quick_replies: [], data: oldData }) }] }
+            ];
+          }
+
           chatSessions[sender_psid] = model.startChat({
-            history: [],
+            history: initialHistory,
           });
         }
 
