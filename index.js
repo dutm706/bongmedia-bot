@@ -22,16 +22,21 @@ const model = genAI.getGenerativeModel({
     Bạn là nhân viên tư vấn của doanh nghiệp "Bống Media - Chụp ảnh kỷ yếu" (hoạt động chủ yếu ở Hải Dương - Hải Phòng).
     Khách hàng là học sinh cấp 3, sinh viên Gen Z. Xưng hô: "Bống / Tụi mình / Admin" và "Cậu / Các bạn / Lớp mình". Dùng emoji thân thiện.
     
-    MỤC TIÊU & QUY TẮC CHỐNG LẶP (CỰC KỲ QUAN TRỌNG):
-    1. Ghi nhớ ngữ cảnh: Bạn đã có trí nhớ. Hãy đọc kỹ lịch sử trò chuyện. TUYỆT ĐỐI KHÔNG HỎI LẠI những thông tin mà khách đã cung cấp (SĐT, trường lớp, sĩ số, concept, ngày chụp).
-    2. Chống lặp văn mẫu: Chỉ chào hỏi và khoe thiết bị (Canon R6 Mark II, lens L) ở TIN NHẮN ĐẦU TIÊN. Tuyệt đối không nhắc lại điệp khúc thiết bị này ở các câu sau gây phản cảm cho khách.
-    3. Trọng tâm: Tư vấn concept, báo giá mồi (300k-600k/người) và chỉ khéo léo hỏi thăm những thông tin CÒN THIẾU để chốt lịch. Trả lời ngắn gọn, tự nhiên như người thật.
+    MỤC TIÊU & QUY TẮC TƯ VẤN (CỰC KỲ QUAN TRỌNG):
+    1. Phân loại Booking đầu vào: Ngay khi khách hàng nhắn tin lần đầu, bạn BẮT BUỘC phải chào hỏi và hỏi họ muốn chụp theo hình thức nào (Cá nhân, Nhóm bạn, hay Lớp) bằng cách đưa ra 3 lựa chọn quick_replies.
+    2. Tư vấn theo phễu: 
+       - Nếu khách chọn "Cá nhân" / "Nhóm bạn": Tư vấn các concept lẻ (nàng thơ, beauty, vintage, dã ngoại...), báo giá lẻ. Không nhắc đến "sĩ số lớp".
+       - Nếu khách chọn "Lớp": Tư vấn concept kỷ yếu tập thể (Party Night, Châu Âu, Thanh xuân...), báo giá trọn gói sĩ số đông (300k-600k/người) và nhấn mạnh thiết bị body Canon R6 Mark II cùng dàn lens L.
+       - Nếu khách đổi ý muốn nghe thêm về loại hình booking khác, hãy linh hoạt chuyển đổi nội dung tư vấn ngay lập tức.
+    3. Ghi nhớ ngữ cảnh: Đã có trí nhớ. TUYỆT ĐỐI KHÔNG HỎI LẠI những thông tin khách đã cung cấp (Loại booking, SĐT, trường lớp, sĩ số, concept, ngày chụp).
     
     QUY TẮC BẮT BUỘC:
     Mọi câu trả lời của bạn PHẢI là một file JSON hợp lệ duy nhất. KHÔNG có văn bản nào nằm ngoài JSON. Cấu trúc:
     {
-      "reply": "Nội dung chat với khách (ngắn gọn, tự nhiên, không nhai lại ý cũ)",
+      "reply": "Nội dung chat với khách (ngắn gọn, tự nhiên, tập trung vào loại booking khách chọn)",
+      "quick_replies": ["Cá nhân", "Nhóm bạn", "Lớp"], // Tạo tối đa 3 lựa chọn trả lời nhanh. Nếu là câu hỏi đầu, BẮT BUỘC trả về ["Cá nhân", "Nhóm bạn", "Lớp"]. Nếu không cần hỏi thêm, để [].
       "data": {
+         "booking_type": "Hình thức chụp khách chọn: Cá nhân, Nhóm bạn, hoặc Lớp (nếu có, nếu không để null)",
          "phone": "Số điện thoại (nếu có, nếu không để null)",
          "school_class": "Tên lớp/trường (nếu có, nếu không để null)",
          "student_count": "Sĩ số (nếu có, nếu không để null)",
@@ -59,6 +64,7 @@ async function saveCustomerData(senderId, customerData) {
     await sheet.addRow({
       'Thời gian': new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
       'Facebook ID': senderId,
+      'Loại Booking': customerData.booking_type || '', // Thêm trường thông tin mới
       'Số điện thoại': customerData.phone || '',
       'Trường / Tên lớp': customerData.school_class || '',
       'Sĩ số dự kiến': customerData.student_count || '',
@@ -69,15 +75,28 @@ async function saveCustomerData(senderId, customerData) {
     console.error("Lỗi Google Sheet:", error);
   }
 }
+// Hàm gửi tin nhắn qua Messenger API (Hỗ trợ Quick Replies)
+async function sendFacebookMessage(sender_psid, text, quickRepliesArray = []) {
+  let messageData = {
+    text: text
+  };
 
-// Hàm gửi tin nhắn Messenger
-async function sendFacebookMessage(senderId, text) {
+  // Nếu AI có tạo ra nút bấm, thì đóng gói gửi kèm
+  if (quickRepliesArray && quickRepliesArray.length > 0) {
+    messageData.quick_replies = quickRepliesArray.map(reply => ({
+      content_type: "text",
+      title: reply.length > 20 ? reply.substring(0, 17) + "..." : reply, // Chống lỗi quá 20 ký tự
+      payload: "QUICK_REPLY_PAYLOAD" 
+    }));
+  }
+
+  const requestBody = {
+    recipient: { id: sender_psid },
+    message: messageData
+  };
+
   try {
-    await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
-      recipient: { id: senderId },
-      messaging_type: "RESPONSE",
-      message: { text: text }
-    });
+    await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${process.env.PAGE_ACCESS_TOKEN}`, requestBody);
   } catch (error) {
     console.error("Lỗi gửi tin nhắn FB:", error.response?.data || error.message);
   }
@@ -114,14 +133,14 @@ app.post('/webhook', async (req, res) => {
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
         const aiResponse = JSON.parse(text);
 
-        // Gửi tin nhắn cho khách
+        // Gửi tin nhắn cho khách (Kèm nút bấm trả lời nhanh)
         if (aiResponse.reply) {
-            await sendFacebookMessage(sender_psid, aiResponse.reply);
+            await sendFacebookMessage(sender_psid, aiResponse.reply, aiResponse.quick_replies);
         }
 
-        // Lưu dữ liệu vào Google Sheet
+        // Đợi lưu dữ liệu vào Google Sheet (thêm điều kiện booking_type)
         const data = aiResponse.data;
-        if (data && (data.phone !== null || data.school_class !== null || data.student_count !== null || data.concept !== null || data.shoot_date !== null)) {
+        if (data && (data.booking_type !== null || data.phone !== null || data.school_class !== null || data.student_count !== null || data.concept !== null || data.shoot_date !== null)) {
             await saveCustomerData(sender_psid, data);
         }
       } catch (error) {
